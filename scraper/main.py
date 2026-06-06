@@ -261,6 +261,7 @@ def main():
                         help="仅采集指定数据源 (gdgpo/gdggzy)")
     parser.add_argument("--playwright", action="store_true", help="使用 Playwright 备选方案")
     parser.add_argument("--no-merge", action="store_true", help="不与历史数据合并（仅保存本次采集）")
+    parser.add_argument("--no-content", action="store_true", help="不采集公告正文内容（加速采集）")
     parser.add_argument("--log-level", type=str, default=None,
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                         help="日志级别")
@@ -270,7 +271,12 @@ def main():
     setup_logging(args.log_level)
 
     logger.info("粤采雷达 - 采集任务开始")
-    logger.info(f"参数: test={args.test}, days={args.days}, source={args.source}, playwright={args.playwright}")
+    logger.info(f"参数: test={args.test}, days={args.days}, source={args.source}, playwright={args.playwright}, no_content={args.no_content}")
+
+    # 应用 --no-content 选项
+    if args.no_content:
+        from scraper.config import HTTP_CONFIG
+        HTTP_CONFIG["fetch_content"] = False
 
     # 日期范围
     end_date = datetime.now().strftime("%Y-%m-%d")

@@ -98,6 +98,9 @@ python -m scraper --source gdggzy
 
 # 指定天数
 python -m scraper --days 14
+
+# 跳过正文采集（更快）
+python -m scraper --no-content
 ```
 
 ### 构建搜索索引
@@ -157,6 +160,7 @@ Git commit + push（数据文件）
 | 04 | [搜索索引构建报告](Docs/04-搜索索引构建报告.md) | 聚合统计、FlexSearch 索引生成 |
 | 05 | [前端界面开发报告](Docs/05-前端界面开发报告.md) | 单页应用、搜索策略、UI 设计 |
 | 06 | [部署使用教程](Docs/06-部署使用教程.md) | 从零开始的完整部署指南 |
+| 07 | [详情链接修复与公告内容采集](Docs/07-详情链接修复与公告内容采集.md) | URL 修复、正文采集、前端展示 |
 
 ## 许可证
 

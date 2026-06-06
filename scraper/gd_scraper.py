@@ -58,6 +58,7 @@ class ProcurementItem:
     agency: str = ""                # 招标代理机构
     notice_type: str = ""           # 公告类型
     crawl_time: str = ""            # 采集时间
+    content: str = ""               # 公告正文内容（纯文本摘要）
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -237,7 +238,36 @@ class GDGPOScraper(BaseScraper):
 
             page += 1
 
-        logger.info(f"[{self.name}] 采集完成: 共 {len(items)} 条医疗设备相关记录")
+        logger.info(f"[{self.name}] 列表采集完成: 共 {len(items)} 条医疗设备相关记录")
+
+        # 采集公告正文内容
+        if items and HTTP_CONFIG.get("fetch_content", True):
+            logger.info(f"[{self.name}] 开始采集公告正文内容 ({len(items)} 条)...")
+            success = 0
+            for i, item in enumerate(items):
+                # 从 URL 中提取 notice_id
+                url = item.url or ""
+                nid = url.split("id=")[-1] if "id=" in url else ""
+                if not nid:
+                    continue
+                try:
+                    detail = self.fetch_detail(nid)
+                    desc = detail.get("description", "")
+                    if desc:
+                        # 去除 HTML 标签，保留纯文本
+                        import re
+                        text = re.sub(r"<[^>]+>", "", desc)
+                        text = re.sub(r"\s+", " ", text).strip()
+                        # 截取前 2000 字作为摘要
+                        item.content = text[:2000]
+                        success += 1
+                    self._polite_delay()
+                except Exception as e:
+                    logger.debug(f"[{self.name}] 获取详情失败 (noticeId={nid}): {e}")
+                if (i + 1) % 5 == 0:
+                    logger.info(f"[{self.name}] 详情进度: {i+1}/{len(items)} (成功 {success})")
+            logger.info(f"[{self.name}] 详情采集完成: {success}/{len(items)} 条成功")
+
         return items
 
     def _fetch_list_page(self, page: int, start_date: str, end_date: str) -> dict:

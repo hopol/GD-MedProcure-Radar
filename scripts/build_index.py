@@ -225,6 +225,7 @@ def build_search_index(data: list[dict]) -> list[dict]:
 
             # === 展示字段 ===
             "url": item.get("url", ""),
+            "content": (item.get("content") or "")[:300],  # 正文摘要（前300字）
         }
         index_docs.append(doc)
 

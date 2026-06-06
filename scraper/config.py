@@ -28,7 +28,7 @@ GDGPO_CONFIG = {
     "detail_api": "https://gdgpo.czt.gd.gov.cn/gpcms/rest/web/v2/info/getInfoById",
     "site_id": "cd64e06a-21a7-4620-aebc-0576bab7e07a",
     "channel": "fca71be5-fc0c-45db-96af-f513e9abda9d",
-    "detail_url_template": "https://gdgpo.czt.gd.gov.cn/maincms-web/articleDetail?noticeId={notice_id}",
+    "detail_url_template": "https://gdgpo.czt.gd.gov.cn/maincms-web/noticeGd?id={notice_id}",
     # 公告类型代码
     "notice_types": {
         "procurement_notice": "00101",     # 采购公告
@@ -100,6 +100,7 @@ HTTP_CONFIG = {
     "request_delay": (2, 5),     # 请求间隔范围（秒）- 随机
     "page_size": 20,             # 每页条数
     "max_pages": 50,             # 单次采集最大页数（防止无限循环）
+    "fetch_content": True,        # 是否采集公告正文内容（调用详情 API）
 }
 
 # 请求头池（模拟不同浏览器）
