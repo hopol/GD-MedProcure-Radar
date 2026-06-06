@@ -75,15 +75,19 @@ class BaseScraper(ABC):
         self._request_count = 0
 
     def _build_session(self) -> requests.Session:
-        """构建带自动重试的 requests Session"""
+        """构建带自动重试的 requests Session（针对海外服务器访问国内网站优化）"""
         session = requests.Session()
         retry = Retry(
             total=HTTP_CONFIG["max_retries"],
             backoff_factor=HTTP_CONFIG["retry_delay"],
-            status_forcelist=[429, 500, 502, 503, 504],
+            status_forcelist=[408, 429, 500, 502, 503, 504],
             allowed_methods=["GET", "POST"],
+            raise_on_status=False,
+            # 连接错误也重试（包括 ConnectTimeout）
+            connect=HTTP_CONFIG["max_retries"],
+            read=HTTP_CONFIG["max_retries"],
         )
-        adapter = HTTPAdapter(max_retries=retry)
+        adapter = HTTPAdapter(max_retries=retry, pool_connections=5, pool_maxsize=5)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
         return session
@@ -198,8 +202,18 @@ class GDGPOScraper(BaseScraper):
             try:
                 data = self._fetch_list_page(page, start_date, end_date)
             except Exception as e:
-                logger.error(f"[{self.name}] 第 {page} 页请求失败: {e}")
-                break
+                if page == 1:
+                    # 第 1 页失败时额外等待后重试一次（海外服务器访问国内网站可能需要更长时间）
+                    logger.warning(f"[{self.name}] 第 1 页首次失败，等待 30 秒后重试: {e}")
+                    time.sleep(30)
+                    try:
+                        data = self._fetch_list_page(page, start_date, end_date)
+                    except Exception as e2:
+                        logger.error(f"[{self.name}] 第 1 页重试仍然失败: {e2}")
+                        break
+                else:
+                    logger.error(f"[{self.name}] 第 {page} 页请求失败: {e}")
+                    break
 
             # 解析分页信息
             if total is None:
@@ -395,8 +409,17 @@ class GDGGZYScraper(BaseScraper):
                         logger.error(f"[{self.name}] 第 {page} 页请求失败: {e}")
                         break
                 except Exception as e:
-                    logger.error(f"[{self.name}] 第 {page} 页请求失败: {e}")
-                    break
+                    if page == 1:
+                        logger.warning(f"[{self.name}] 关键词 '{keyword}' 第 1 页首次失败，等待 30 秒后重试: {e}")
+                        time.sleep(30)
+                        try:
+                            data = self._fetch_list_page(page, start_date, end_date, keyword)
+                        except Exception as e2:
+                            logger.error(f"[{self.name}] 重试仍然失败: {e2}")
+                            break
+                    else:
+                        logger.error(f"[{self.name}] 第 {page} 页请求失败: {e}")
+                        break
 
                 if kw_total is None:
                     kw_total = int(data.get("total", 0))

@@ -92,12 +92,14 @@ CATEGORY_MAPPING = {
 # HTTP 请求配置
 # =============================================================================
 HTTP_CONFIG = {
-    "timeout": 30,             # 请求超时（秒）
-    "max_retries": 3,          # 最大重试次数
-    "retry_delay": 2,          # 重试间隔（秒）
-    "request_delay": (1, 3),   # 请求间隔范围（秒）- 随机
-    "page_size": 20,           # 每页条数
-    "max_pages": 50,           # 单次采集最大页数（防止无限循环）
+    "connect_timeout": 60,       # 连接超时（秒）— GitHub Actions 海外服务器访问国内网站需更长超时
+    "read_timeout": 120,         # 读取超时（秒）
+    "timeout": (60, 120),        # (connect, read) 元组，供 requests 库使用
+    "max_retries": 5,            # 最大重试次数
+    "retry_delay": 5,            # 重试间隔基数（秒），实际按指数退避递增
+    "request_delay": (2, 5),     # 请求间隔范围（秒）- 随机
+    "page_size": 20,             # 每页条数
+    "max_pages": 50,             # 单次采集最大页数（防止无限循环）
 }
 
 # 请求头池（模拟不同浏览器）
