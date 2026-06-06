@@ -1,0 +1,122 @@
+# ============================================================================
+# 粤采雷达 - 前端构建与部署到 GitHub Pages
+# ============================================================================
+# 触发时机:
+#   1. 被 update-data.yml 通过 workflow_dispatch 触发
+#   2. 手动触发
+#   3. main 分支 data/ 目录有 push 时自动触发
+# ============================================================================
+
+name: 构建并部署到 GitHub Pages
+
+on:
+  # 由 update-data.yml 通过 API 触发
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: '触发原因'
+        required: false
+        default: 'data-update'
+        type: string
+
+  # 数据目录有变更时自动触发（作为备用）
+  push:
+    branches: [main]
+    paths:
+      - 'data/procurements.json'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  deployments: write
+
+# 并发控制：只部署最新版本
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================================================
+  # 构建前端
+  # ==========================================================================
+  build:
+    name: 构建静态站点
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 组装部署目录
+        run: |
+          mkdir -p dist/data
+
+          # 复制前端主页
+          cp frontend/index.html dist/
+          echo "✅ index.html 已复制"
+
+          # 复制数据文件（从 frontend/public/data/ 或 data/ 回退）
+          for f in procurements.json aggregations.json search-index.json; do
+            if [ -f "frontend/public/data/$f" ]; then
+              cp "frontend/public/data/$f" "dist/data/"
+              echo "✅ $f 已复制 (from frontend/public/data/)"
+            elif [ -f "data/$f" ]; then
+              cp "data/$f" "dist/data/"
+              echo "✅ $f 已复制 (from data/)"
+            else
+              echo "⚠️ $f 不存在"
+            fi
+          done
+
+          # 如果 search-index.json 缺失，尝试构建
+          if [ ! -f dist/data/search-index.json ]; then
+            echo "尝试运行 build_index.py 构建索引..."
+            pip install -q requests 2>/dev/null
+            python3 scripts/build_index.py 2>/dev/null
+            if [ -f "frontend/public/data/search-index.json" ]; then
+              cp "frontend/public/data/search-index.json" "dist/data/"
+              echo "✅ search-index.json 构建并复制"
+            fi
+          fi
+
+          echo ""
+          echo "=== 部署目录结构 ==="
+          find dist -type f | head -20
+
+      - name: 初始化 Pages 环境
+        uses: actions/configure-pages@v5
+
+      - name: 上传构建产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  # ==========================================================================
+  # 部署到 GitHub Pages
+  # ==========================================================================
+  deploy:
+    name: 部署到 GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: 输出部署信息
+        run: |
+          echo "✅ 部署成功!"
+          echo "🌐 站点地址: ${{ steps.deployment.outputs.page_url }}"
+          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
+          ## 🌐 粤采雷达 - 部署完成
+
+          站点地址: **${{ steps.deployment.outputs.page_url }}**
+          SUMMARY

@@ -1,0 +1,17 @@
+# 粤采雷达 - Python 依赖
+# pip install -r scraper/requirements.txt
+
+# 核心爬虫
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+urllib3>=2.0.0
+
+# 数据处理
+pandas>=2.0.0
+
+# 备选方案：Playwright 浏览器自动化（可选）
+# 安装后需执行: playwright install chromium
+playwright>=1.40.0
+
+# 工具
+lxml>=5.0.0

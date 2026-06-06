@@ -1,0 +1,35 @@
+# 粤采雷达 - Git 忽略规则
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 数据（保留 procurements.json，忽略原始快照和中间文件）
+data/raw/*.json
+data/processed/by_region/*.json
+data/search_index/*.json
+data/stats/*.json
+
+# 截图（研究用）
+data/*.png
+
+# 测试服务器目录
+test-serve/

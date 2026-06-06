@@ -1,0 +1,257 @@
+# ============================================================================
+# 粤采雷达 - 数据采集与更新工作流
+# ============================================================================
+# 触发时机:
+#   1. 每天北京时间 08:00 和 14:00 自动运行 (Cron)
+#   2. 手动触发 (workflow_dispatch)
+#
+# 执行流程:
+#   检出代码 → 安装 Python → 运行爬虫 → 构建索引 → 提交数据 → 触发前端部署
+#
+# Token 配置说明:
+#   需要在仓库 Settings → Secrets → Actions 中设置:
+#   - GH_PAT: 具有 repo 权限的 Personal Access Token (推荐 Fine-grained)
+#     用途: 推送数据提交到 main 分支，并触发下游工作流
+#   如果未设置 GH_PAT，将回退到 GITHUB_TOKEN（但无法触发下游 push 事件工作流）
+# ============================================================================
+
+name: 数据采集与更新
+
+on:
+  # 定时触发：每天北京时间 08:00 (UTC 00:00) 和 14:00 (UTC 06:00)
+  schedule:
+    - cron: '0 0 * * *'    # 北京时间 08:00
+    - cron: '0 6 * * *'    # 北京时间 14:00
+
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '采集近 N 天的数据（默认 7 天）'
+        required: false
+        default: '7'
+        type: string
+      source:
+        description: '指定数据源 (gdgpo/gdggzy，留空=全部)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - gdgpo
+          - gdggzy
+      skip_deploy:
+        description: '跳过前端部署触发'
+        required: false
+        default: false
+        type: boolean
+
+# 并发控制：同一时间只运行一个采集任务，新触发取消旧的
+concurrency:
+  group: data-crawl
+  cancel-in-progress: true
+
+# 权限声明
+permissions:
+  contents: write       # 推送数据提交
+  actions: write        # 触发下游工作流
+
+env:
+  PYTHON_VERSION: '3.11'
+  DATA_FILE: 'data/procurements.json'
+
+jobs:
+  # ==========================================================================
+  # Job 1: 数据采集与提交
+  # ==========================================================================
+  crawl-and-commit:
+    name: 采集数据并提交
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ------ 1. 检出代码 ------
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+        with:
+          # 使用 PAT 以便后续 push 能触发下游工作流
+          # 如果 GH_PAT 未设置，回退到 GITHUB_TOKEN
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      # ------ 2. 配置 Python 环境 ------
+      - name: 设置 Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: scraper/requirements.txt
+
+      - name: 安装 Python 依赖
+        run: |
+          pip install --upgrade pip
+          pip install -r scraper/requirements.txt
+
+      # ------ 3. 运行爬虫 ------
+      - name: 执行数据采集
+        id: crawl
+        run: |
+          # 构建爬虫参数
+          ARGS=""
+
+          # 手动触发时使用用户指定的参数
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DAYS="${{ github.event.inputs.days }}"
+            SOURCE="${{ github.event.inputs.source }}"
+            if [ -n "$DAYS" ]; then
+              ARGS="$ARGS --days $DAYS"
+            fi
+            if [ -n "$SOURCE" ]; then
+              ARGS="$ARGS --source $SOURCE"
+            fi
+          else
+            # 定时触发：默认采集近 7 天
+            ARGS="--days 7"
+          fi
+
+          echo "🚀 开始采集，参数: $ARGS"
+          echo "crawl_args=$ARGS" >> "$GITHUB_OUTPUT"
+
+          # 运行爬虫（记录退出码）
+          set +e
+          python -m scraper $ARGS 2>&1 | tee crawl_output.log
+          CRAWL_EXIT=$?
+          set -e
+
+          if [ $CRAWL_EXIT -ne 0 ]; then
+            echo "⚠️ 爬虫以退出码 $CRAWL_EXIT 结束"
+            echo "crawl_success=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ 采集完成"
+            echo "crawl_success=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # 统计采集到的记录数
+          if [ -f "${{ env.DATA_FILE }}" ]; then
+            COUNT=$(python -c "import json; print(len(json.load(open('${{ env.DATA_FILE }}'))))")
+            echo "record_count=$COUNT" >> "$GITHUB_OUTPUT"
+            echo "📊 当前数据量: $COUNT 条"
+          else
+            echo "record_count=0" >> "$GITHUB_OUTPUT"
+            echo "⚠️ 数据文件不存在"
+          fi
+
+      # ------ 4. 构建搜索索引与聚合数据 ------
+      - name: 构建搜索索引
+        if: steps.crawl.outputs.crawl_success == 'true'
+        run: |
+          echo "🔍 构建搜索索引与聚合统计..."
+          python scripts/build_index.py
+          echo "✅ 索引构建完成"
+
+      # ------ 5. 检查数据变更并提交 ------
+      - name: 检查并提交数据变更
+        id: commit
+        if: steps.crawl.outputs.crawl_success == 'true'
+        run: |
+          # 配置 Git 用户
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # 暂存所有数据相关文件（含索引和聚合）
+          git add "${{ env.DATA_FILE }}"
+          git add "data/aggregations.json"
+          git add "frontend/public/search-index.json"
+          git add "frontend/public/data/"
+
+          # 检查是否有实际变更
+          if git diff --cached --quiet; then
+            echo "📭 数据无变更，跳过提交"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            # 获取变更统计
+            RECORD_COUNT="${{ steps.crawl.outputs.record_count }}"
+            TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+            # 查看 diff 摘要
+            DIFF_STAT=$(git diff --cached --stat)
+            echo "📝 检测到数据变更:"
+            echo "$DIFF_STAT"
+
+            # 提交
+            git commit -m "📊 数据更新: ${RECORD_COUNT} 条记录 (${TIMESTAMP})
+
+          采集参数: ${{ steps.crawl.outputs.crawl_args }}
+          触发方式: ${{ github.event_name }}
+          记录数量: ${RECORD_COUNT}
+
+          Co-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ------ 6. 推送到远程仓库 ------
+      - name: 推送变更到 main 分支
+        if: steps.commit.outputs.has_changes == 'true'
+        run: |
+          # 使用 rebase 策略避免冲突
+          git pull --rebase origin main || {
+            echo "⚠️ rebase 冲突，尝试 merge..."
+            git rebase --abort
+            git pull --no-edit origin main
+          }
+          git push origin HEAD:main
+          echo "✅ 已推送到 main 分支"
+
+      # ------ 7. 触发前端部署工作流 ------
+      - name: 触发前端部署
+        if: >
+          steps.commit.outputs.has_changes == 'true' &&
+          (github.event_name != 'workflow_dispatch' ||
+           github.event.inputs.skip_deploy != 'true')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'deploy-pages.yml',
+                ref: 'main',
+              });
+              console.log('✅ 已触发 deploy-pages 工作流');
+            } catch (error) {
+              // 如果 deploy-pages.yml 尚未创建，记录警告但不失败
+              console.log('⚠️ 触发部署工作流失败（可能尚未创建）:', error.message);
+            }
+
+      # ------ 8. 输出摘要 ------
+      - name: 输出运行摘要
+        if: always()
+        run: |
+          echo "============================================================"
+          echo "  粤采雷达 - 采集运行摘要"
+          echo "============================================================"
+          echo "  触发方式:   ${{ github.event_name }}"
+          echo "  采集参数:   ${{ steps.crawl.outputs.crawl_args || 'N/A' }}"
+          echo "  采集状态:   ${{ steps.crawl.outputs.crawl_success || 'failed' }}"
+          echo "  记录数量:   ${{ steps.crawl.outputs.record_count || '0' }}"
+          echo "  数据变更:   ${{ steps.commit.outputs.has_changes || 'N/A' }}"
+          echo "============================================================"
+
+          # 写入 Job Summary
+          cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY'
+          ## 📡 粤采雷达 - 数据采集报告
+
+          | 项目 | 值 |
+          |------|-----|
+          SUMMARY
+
+          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
+          | 触发方式 | \`${{ github.event_name }}\` |
+          | 采集参数 | \`${{ steps.crawl.outputs.crawl_args || 'N/A' }}\` |
+          | 采集状态 | ${{ steps.crawl.outputs.crawl_success == 'true' && '✅ 成功' || '❌ 失败' }} |
+          | 记录数量 | ${{ steps.crawl.outputs.record_count || '0' }} 条 |
+          | 数据变更 | ${{ steps.commit.outputs.has_changes == 'true' && '📝 已提交' || '📭 无变更' }} |
+          SUMMARY
