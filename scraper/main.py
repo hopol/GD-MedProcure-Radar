@@ -21,6 +21,7 @@ import hashlib
 import json
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -299,30 +300,38 @@ def main():
         else:
             scrapers = create_all_scrapers()
 
-        # 执行采集
+        # 执行采集（双数据源并行）
         all_raw_items: list[dict] = []
         all_items: list[ProcurementItem] = []
         scraper_stats: list[dict] = []
 
-        for scraper in scrapers:
+        def _run_scraper(scraper):
+            """在线程中执行单个爬虫"""
             logger.info(f"--- 开始采集: {scraper.name} ---")
-            try:
-                items = scraper.crawl(start_date=start_date, end_date=end_date, max_pages=max_pages)
-                all_items.extend(items)
+            items = scraper.crawl(start_date=start_date, end_date=end_date, max_pages=max_pages)
+            return scraper, items
 
-                # 保存原始快照
-                raw_dicts = [item.to_dict() for item in items]
-                save_raw_snapshot(raw_dicts, scraper.name)
+        with ThreadPoolExecutor(max_workers=len(scrapers)) as pool:
+            futures = {pool.submit(_run_scraper, s): s for s in scrapers}
+            for future in as_completed(futures):
+                scraper = futures[future]
+                try:
+                    scraper, items = future.result()
+                    all_items.extend(items)
 
-                stats = scraper.get_stats()
-                stats["crawled"] = len(items)
-                scraper_stats.append(stats)
+                    # 保存原始快照
+                    raw_dicts = [item.to_dict() for item in items]
+                    save_raw_snapshot(raw_dicts, scraper.name)
 
-                logger.info(f"--- {scraper.name} 采集完成: {len(items)} 条 ---")
+                    stats = scraper.get_stats()
+                    stats["crawled"] = len(items)
+                    scraper_stats.append(stats)
 
-            except Exception as e:
-                logger.error(f"--- {scraper.name} 采集失败: {e} ---", exc_info=True)
-                scraper_stats.append({"name": scraper.name, "crawled": 0, "request_count": 0, "error": str(e)})
+                    logger.info(f"--- {scraper.name} 采集完成: {len(items)} 条 ---")
+
+                except Exception as e:
+                    logger.error(f"--- {scraper.name} 采集失败: {e} ---", exc_info=True)
+                    scraper_stats.append({"name": scraper.name, "crawled": 0, "request_count": 0, "error": str(e)})
 
     # 去重
     deduped = deduplicate(all_items)

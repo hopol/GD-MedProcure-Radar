@@ -107,6 +107,12 @@ class BaseScraper(ABC):
         delay = random.uniform(lo, hi)
         time.sleep(delay)
 
+    def _detail_delay(self):
+        """详情 API 专用短延迟（详情接口独立，可更激进）"""
+        lo, hi = HTTP_CONFIG.get("detail_delay", (0.3, 0.8))
+        delay = random.uniform(lo, hi)
+        time.sleep(delay)
+
     def _get(self, url: str, params: dict | None = None, headers: dict | None = None) -> requests.Response:
         """发起 GET 请求（带限速和日志）"""
         self._polite_delay()
@@ -205,8 +211,8 @@ class GDGPOScraper(BaseScraper):
             except Exception as e:
                 if page == 1:
                     # 第 1 页失败时额外等待后重试一次（海外服务器访问国内网站可能需要更长时间）
-                    logger.warning(f"[{self.name}] 第 1 页首次失败，等待 30 秒后重试: {e}")
-                    time.sleep(30)
+                    logger.warning(f"[{self.name}] 第 1 页首次失败，等待 15 秒后重试: {e}")
+                    time.sleep(15)
                     try:
                         data = self._fetch_list_page(page, start_date, end_date)
                     except Exception as e2:
@@ -240,32 +246,44 @@ class GDGPOScraper(BaseScraper):
 
         logger.info(f"[{self.name}] 列表采集完成: 共 {len(items)} 条医疗设备相关记录")
 
-        # 采集公告正文内容
+        # 采集公告正文内容（使用线程池并发加速）
         if items and HTTP_CONFIG.get("fetch_content", True):
-            logger.info(f"[{self.name}] 开始采集公告正文内容 ({len(items)} 条)...")
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import re
+
+            logger.info(f"[{self.name}] 开始并发采集公告正文内容 ({len(items)} 条)...")
             success = 0
-            for i, item in enumerate(items):
-                # 从 URL 中提取 notice_id
+
+            def _fetch_one(item):
+                """获取单条详情（线程内执行）"""
                 url = item.url or ""
                 nid = url.split("id=")[-1] if "id=" in url else ""
                 if not nid:
-                    continue
+                    return item, None
+                self._detail_delay()
                 try:
                     detail = self.fetch_detail(nid)
                     desc = detail.get("description", "")
                     if desc:
-                        # 去除 HTML 标签，保留纯文本
-                        import re
                         text = re.sub(r"<[^>]+>", "", desc)
                         text = re.sub(r"\s+", " ", text).strip()
-                        # 截取前 2000 字作为摘要
-                        item.content = text[:2000]
-                        success += 1
-                    self._polite_delay()
+                        return item, text[:2000]
                 except Exception as e:
                     logger.debug(f"[{self.name}] 获取详情失败 (noticeId={nid}): {e}")
-                if (i + 1) % 5 == 0:
-                    logger.info(f"[{self.name}] 详情进度: {i+1}/{len(items)} (成功 {success})")
+                return item, None
+
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                futures = {pool.submit(_fetch_one, item): item for item in items}
+                done_count = 0
+                for future in as_completed(futures):
+                    item, content = future.result()
+                    done_count += 1
+                    if content:
+                        item.content = content
+                        success += 1
+                    if done_count % 5 == 0:
+                        logger.info(f"[{self.name}] 详情进度: {done_count}/{len(items)} (成功 {success})")
+
             logger.info(f"[{self.name}] 详情采集完成: {success}/{len(items)} 条成功")
 
         return items
@@ -413,8 +431,8 @@ class GDGGZYScraper(BaseScraper):
 
         logger.info(f"[{self.name}] 开始采集: {start_date} ~ {end_date}, 最大 {max_pages} 页")
 
-        # 使用多个医疗关键词进行搜索，合并结果
-        search_keywords = ["医疗设备", "医疗器械", "医用设备", "医疗仪器"]
+        # 使用精简关键词进行搜索（“医疗设备”已涵盖“医用设备”和“医疗仪器”的结果）
+        search_keywords = ["医疗设备", "医疗器械"]
 
         for keyword in search_keywords:
             logger.info(f"[{self.name}] 搜索关键词: '{keyword}'")
@@ -428,8 +446,8 @@ class GDGGZYScraper(BaseScraper):
                     data = self._fetch_list_page(page, start_date, end_date, keyword)
                 except requests.exceptions.HTTPError as e:
                     if e.response is not None and e.response.status_code == 429:
-                        logger.warning(f"[{self.name}] 触发频率限制 (429)，等待 30 秒后重试...")
-                        time.sleep(30)
+                        logger.warning(f"[{self.name}] 触发频率限制 (429)，等待 15 秒后重试...")
+                        time.sleep(15)
                         try:
                             data = self._fetch_list_page(page, start_date, end_date, keyword)
                         except Exception as retry_e:
@@ -440,8 +458,8 @@ class GDGGZYScraper(BaseScraper):
                         break
                 except Exception as e:
                     if page == 1:
-                        logger.warning(f"[{self.name}] 关键词 '{keyword}' 第 1 页首次失败，等待 30 秒后重试: {e}")
-                        time.sleep(30)
+                        logger.warning(f"[{self.name}] 关键词 '{keyword}' 第 1 页首次失败，等待 15 秒后重试: {e}")
+                        time.sleep(15)
                         try:
                             data = self._fetch_list_page(page, start_date, end_date, keyword)
                         except Exception as e2:

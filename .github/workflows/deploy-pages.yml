@@ -57,8 +57,7 @@ jobs:
           cp frontend/index.html dist/
           echo "✅ index.html 已复制"
 
-          # 安装 Python 依赖并运行 URL 修复脚本（修复旧数据中的错误 URL）
-          pip install -q requests 2>/dev/null
+          # 运行 URL 修复脚本（修复旧数据中的错误 URL，仅需标准库）
           python3 scripts/fix_data_urls.py
 
           # 重新构建搜索索引（确保 URL + content 字段最新）

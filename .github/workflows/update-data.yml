@@ -18,10 +18,10 @@
 name: 数据采集与更新
 
 on:
-  # 定时触发：每天北京时间 08:00 (UTC 00:00) 和 14:00 (UTC 06:00)
+  # 定时触发：工作日北京时间 08:00 (UTC 00:00) 和 14:00 (UTC 06:00)
   schedule:
-    - cron: '0 0 * * *'    # 北京时间 08:00
-    - cron: '0 6 * * *'    # 北京时间 14:00
+    - cron: '0 0 * * 1-5'    # 北京时间 08:00（周一至周五）
+    - cron: '0 6 * * 1-5'    # 北京时间 14:00（周一至周五）
 
   # 手动触发
   workflow_dispatch:
@@ -85,12 +85,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
-          cache-dependency-path: scraper/requirements.txt
+          cache-dependency-path: scraper/requirements-core.txt
 
-      - name: 安装 Python 依赖
+      - name: 安装 Python 依赖（核心依赖）
         run: |
           pip install --upgrade pip
-          pip install -r scraper/requirements.txt
+          pip install -r scraper/requirements-core.txt
 
       # ------ 3. 运行爬虫 ------
       - name: 执行数据采集

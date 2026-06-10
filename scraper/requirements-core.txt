@@ -1,0 +1,5 @@
+# 粤采雷达 - CI 核心依赖（仅用于 GitHub Actions 采集流程）
+# 本地开发请安装完整版: pip install -r scraper/requirements.txt
+
+requests>=2.31.0
+urllib3>=2.0.0

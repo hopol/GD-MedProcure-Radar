@@ -89,16 +89,17 @@ CATEGORY_MAPPING = {
 
 
 # =============================================================================
-# HTTP 请求配置
+# HTTP 请求配置（已优化 — 兼顾效率与稳定性）
 # =============================================================================
 HTTP_CONFIG = {
-    "connect_timeout": 60,       # 连接超时（秒）— GitHub Actions 海外服务器访问国内网站需更长超时
-    "read_timeout": 120,         # 读取超时（秒）
-    "timeout": (60, 120),        # (connect, read) 元组，供 requests 库使用
-    "max_retries": 5,            # 最大重试次数
-    "retry_delay": 5,            # 重试间隔基数（秒），实际按指数退避递增
-    "request_delay": (2, 5),     # 请求间隔范围（秒）- 随机
-    "page_size": 20,             # 每页条数
+    "connect_timeout": 20,       # 连接超时（秒）— 从 60s 降至 20s，快速失败
+    "read_timeout": 30,          # 读取超时（秒）— 从 120s 降至 30s
+    "timeout": (20, 30),         # (connect, read) 元组，供 requests 库使用
+    "max_retries": 3,            # 最大重试次数 — 从 5 降至 3，减少无效等待
+    "retry_delay": 3,            # 重试间隔基数（秒）— 从 5 降至 3
+    "request_delay": (0.8, 1.5), # 列表页请求间隔（秒）— 从 (2,5) 大幅降低
+    "detail_delay": (0.3, 0.8),  # 详情 API 专用短延迟（独立接口压力小）
+    "page_size": 50,             # 每页条数 — 从 20 提升至 50，减少翻页次数
     "max_pages": 50,             # 单次采集最大页数（防止无限循环）
     "fetch_content": True,        # 是否采集公告正文内容（调用详情 API）
 }
