@@ -57,7 +57,14 @@ jobs:
           cp frontend/index.html dist/
           echo "✅ index.html 已复制"
 
-          # 复制数据文件（从 frontend/public/data/ 或 data/ 回退）
+          # 安装 Python 依赖并运行 URL 修复脚本（修复旧数据中的错误 URL）
+          pip install -q requests 2>/dev/null
+          python3 scripts/fix_data_urls.py
+
+          # 重新构建搜索索引（确保 URL + content 字段最新）
+          python3 scripts/build_index.py
+
+          # 复制数据文件（优先 frontend/public/data/，回退 data/）
           for f in procurements.json aggregations.json search-index.json; do
             if [ -f "frontend/public/data/$f" ]; then
               cp "frontend/public/data/$f" "dist/data/"
@@ -69,17 +76,6 @@ jobs:
               echo "⚠️ $f 不存在"
             fi
           done
-
-          # 如果 search-index.json 缺失，尝试构建
-          if [ ! -f dist/data/search-index.json ]; then
-            echo "尝试运行 build_index.py 构建索引..."
-            pip install -q requests 2>/dev/null
-            python3 scripts/build_index.py 2>/dev/null
-            if [ -f "frontend/public/data/search-index.json" ]; then
-              cp "frontend/public/data/search-index.json" "dist/data/"
-              echo "✅ search-index.json 构建并复制"
-            fi
-          fi
 
           echo ""
           echo "=== 部署目录结构 ==="
