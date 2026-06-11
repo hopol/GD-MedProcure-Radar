@@ -1,12 +1,14 @@
 """
 修复现有数据文件中的错误 URL
 - GDGPO: articleDetail?noticeId= → noticeGd?id=
+- GDGGZY: http:// → https:// + 精简为只保留 noticeId
 - 执行: python scripts/fix_data_urls.py
 """
 import json
 import os
 import re
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
@@ -22,6 +24,32 @@ def fix_gdgpo_url(url: str) -> str:
         return new_url
     return url
 
+def fix_gdggzy_url(url: str) -> str:
+    """修复 GDGGZY URL: http:// → https:// + 精简为只保留 noticeId"""
+    if not url or 'ygp.gdzwfw.gov.cn' not in url:
+        return url
+    # http → https
+    if url.startswith('http://'):
+        url = url.replace('http://ygp.gdzwfw.gov.cn', 'https://ygp.gdzwfw.gov.cn')
+    # 精简 URL：去掉冗余参数，只保留 noticeId
+    parsed = urlparse(url)
+    hash_part = parsed.fragment  # /44/new/jygg/v3/D?noticeId=xxx&...
+    if '?' in hash_part:
+        qstr = hash_part.split('?', 1)[1]
+        params = parse_qs(qstr)
+        notice_id = params.get('noticeId', [''])[0]
+        if notice_id:
+            # 重建精简 URL
+            hash_path = hash_part.split('?', 1)[0]
+            url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}#{hash_path}?noticeId={notice_id}"
+    return url
+
+def fix_item_url(url: str) -> str:
+    """修复任意 URL（GDGPO + GDGGZY）"""
+    url = fix_gdgpo_url(url)
+    url = fix_gdggzy_url(url)
+    return url
+
 def fix_procurements():
     """修复 procurements.json"""
     path = os.path.join(DATA_DIR, 'procurements.json')
@@ -35,7 +63,7 @@ def fix_procurements():
     fixed_count = 0
     for item in data:
         old_url = item.get('url', '')
-        new_url = fix_gdgpo_url(old_url)
+        new_url = fix_item_url(old_url)
         if new_url != old_url:
             item['url'] = new_url
             fixed_count += 1
@@ -58,7 +86,7 @@ def fix_search_index():
     fixed_count = 0
     for item in data:
         old_url = item.get('url', '')
-        new_url = fix_gdgpo_url(old_url)
+        new_url = fix_item_url(old_url)
         if new_url != old_url:
             item['url'] = new_url
             fixed_count += 1

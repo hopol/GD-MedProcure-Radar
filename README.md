@@ -164,6 +164,9 @@ Git commit + push（数据文件）
 | 08 | [0610 详情页弹窗与 URL 修复](Docs/08-0610详情页与URL修复.md) | 详情弹窗、URL 三层修复、CI 增强 |
 | 09 | [GitHub Actions 采集效率优化报告](Docs/09-GitHub-Actions采集效率优化报告.md) | 12 个效率瓶颈分析、优化方案与可行性评估 |
 | 10 | [采集效率优化实施报告](Docs/10-采集效率优化实施报告.md) | P0/P1/P2 全部实施记录、效果对比、验证报告 |
+| 11 | [ConnectTimeout 超时紧急修复](Docs/11-ConnectTimeout超时紧急修复.md) | connect_timeout 回调、安全边界、经验总结 |
+| 12 | [三合一数据修复](Docs/12-三合一数据修复报告.md) | GDGPO 采集修复、GDGGZY HTTPS、正文回填 |
+| 13 | [GDGGZY 链接修复与全量正文回填](Docs/13-GDGGZY链接修复与全量正文回填.md) | URL 精简、全量正文、爬虫升级 |
 
 ## 许可证
 

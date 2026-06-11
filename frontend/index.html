@@ -286,8 +286,8 @@
         <!-- 无正文内容 -->
         <div x-show="!detailItem?.content" class="text-center py-10 text-gray-400">
           <svg class="w-12 h-12 mx-auto mb-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          <p class="text-sm">正文内容暂未采集</p>
-          <p class="text-xs mt-1">请点击下方按钮访问原始网页查看完整内容</p>
+          <p class="text-sm" x-text="detailItem?.source === 'gdggzy' ? '该公告原文可能已被下架' : '正文内容暂未采集'"></p>
+          <p class="text-xs mt-1">请点击右下方按钮访问原始网页查看完整内容</p>
         </div>
       </div>
 
@@ -533,7 +533,11 @@
         if (!url) return '#';
         // 修复 GDGPO 旧格式 URL
         if (url.includes('gdgpo.czt.gd.gov.cn') && url.includes('articleDetail?noticeId=')) {
-          return url.replace('/maincms-web/articleDetail?noticeId=', '/maincms-web/noticeGd?id=');
+          url = url.replace('/maincms-web/articleDetail?noticeId=', '/maincms-web/noticeGd?id=');
+        }
+        // 修复 GDGGZY http→https（政府网站强制 HTTPS，HTTP 重定向会丢失 hash fragment）
+        if (url.includes('ygp.gdzwfw.gov.cn') && url.startsWith('http://')) {
+          url = url.replace('http://ygp.gdzwfw.gov.cn', 'https://ygp.gdzwfw.gov.cn');
         }
         return url;
       },

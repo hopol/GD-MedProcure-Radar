@@ -47,16 +47,13 @@ GDGPO_CONFIG = {
 # =============================================================================
 GDGGZY_CONFIG = {
     "name": "广东省公共资源交易平台",
-    "base_url": "http://ygp.gdzwfw.gov.cn",
+    "base_url": "https://ygp.gdzwfw.gov.cn",
     "search_api": "http://ygp.gdzwfw.gov.cn/ggzy-portal/search/v2/items",
     "site_code": 44,
     "trading_type_code": "D",  # 政府采购
     "detail_url_template": (
-        "http://ygp.gdzwfw.gov.cn/#/44/new/jygg/v3/{trading_type_code}"
-        "?noticeId={doc_id}&projectCode={project_code}"
-        "&bizCode={trading_process}&siteCode={site_code}"
-        "&publishDate={publish_date}&source={pub_service_plat}"
-        "&titleDetails={notice_type_desc}&classify={trading_process}"
+        "https://ygp.gdzwfw.gov.cn/#/44/new/jygg/v3/{trading_type_code}"
+        "?noticeId={doc_id}"
     ),
 }
 
@@ -92,9 +89,9 @@ CATEGORY_MAPPING = {
 # HTTP 请求配置（已优化 — 兼顾效率与稳定性）
 # =============================================================================
 HTTP_CONFIG = {
-    "connect_timeout": 20,       # 连接超时（秒）— 从 60s 降至 20s，快速失败
-    "read_timeout": 30,          # 读取超时（秒）— 从 120s 降至 30s
-    "timeout": (20, 30),         # (connect, read) 元组，供 requests 库使用
+    "connect_timeout": 45,       # 连接超时（秒）— 海外 Azure 访问国内政府网站需充足连接时间
+    "read_timeout": 30,          # 读取超时（秒）— 已建立连接后，服务器响应较快
+    "timeout": (45, 30),         # (connect, read) 元组，供 requests 库使用
     "max_retries": 3,            # 最大重试次数 — 从 5 降至 3，减少无效等待
     "retry_delay": 3,            # 重试间隔基数（秒）— 从 5 降至 3
     "request_delay": (0.8, 1.5), # 列表页请求间隔（秒）— 从 (2,5) 大幅降低
@@ -133,8 +130,8 @@ GDGPO_HEADERS = {
 GDGGZY_HEADERS = {
     **DEFAULT_HEADERS,
     "Content-Type": "application/json",
-    "Origin": "http://ygp.gdzwfw.gov.cn",
-    "Referer": "http://ygp.gdzwfw.gov.cn/",
+    "Origin": "https://ygp.gdzwfw.gov.cn",
+    "Referer": "https://ygp.gdzwfw.gov.cn/",
 }
 
 

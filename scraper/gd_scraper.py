@@ -211,8 +211,8 @@ class GDGPOScraper(BaseScraper):
             except Exception as e:
                 if page == 1:
                     # 第 1 页失败时额外等待后重试一次（海外服务器访问国内网站可能需要更长时间）
-                    logger.warning(f"[{self.name}] 第 1 页首次失败，等待 15 秒后重试: {e}")
-                    time.sleep(15)
+                    logger.warning(f"[{self.name}] 第 1 页首次失败，等待 30 秒后重试: {e}")
+                    time.sleep(30)
                     try:
                         data = self._fetch_list_page(page, start_date, end_date)
                     except Exception as e2:
@@ -458,8 +458,8 @@ class GDGGZYScraper(BaseScraper):
                         break
                 except Exception as e:
                     if page == 1:
-                        logger.warning(f"[{self.name}] 关键词 '{keyword}' 第 1 页首次失败，等待 15 秒后重试: {e}")
-                        time.sleep(15)
+                        logger.warning(f"[{self.name}] 关键词 '{keyword}' 第 1 页首次失败，等待 30 秒后重试: {e}")
+                        time.sleep(30)
                         try:
                             data = self._fetch_list_page(page, start_date, end_date, keyword)
                         except Exception as e2:
@@ -551,17 +551,29 @@ class GDGGZYScraper(BaseScraper):
             # 品目分类推断
             category = self.classify_category(title)
 
-            # 详情 URL
+            # 详情 URL（精简格式：只保留 noticeId，提高 SPA 路由稳定性）
             url = GDGGZY_CONFIG["detail_url_template"].format(
                 trading_type_code=GDGGZY_CONFIG["trading_type_code"],
                 doc_id=quote(str(doc_id)),
-                project_code=quote(project_code),
-                trading_process=quote(str(trading_process)),
-                site_code=quote(str(site_code)),
-                publish_date=quote(publish_date_raw),
-                pub_service_plat=quote(pub_plat),
-                notice_type_desc=quote(notice_type_desc),
             )
+
+            # 从搜索记录构建摘要（GDGGZY 无公开详情 API，存储搜索结果作为正文）
+            content_parts = []
+            if title:
+                content_parts.append(f"公告标题：{title}")
+            if project_owner:
+                content_parts.append(f"采购人：{project_owner}")
+            if project_code:
+                content_parts.append(f"项目编号：{project_code}")
+            if region_name:
+                content_parts.append(f"地区：{region_name}")
+            if publish_date:
+                content_parts.append(f"发布日期：{publish_date}")
+            if notice_type_desc:
+                content_parts.append(f"公告类型：{notice_type_desc}")
+            if dataset_name:
+                content_parts.append(f"数据集：{dataset_name}")
+            content = "\n".join(content_parts) if content_parts else ""
 
             return ProcurementItem(
                 project_id=self.make_project_id("gdggzy", str(doc_id)),
@@ -577,6 +589,7 @@ class GDGGZYScraper(BaseScraper):
                 agency="",
                 notice_type=notice_type_desc or "采购公告",
                 crawl_time=datetime.now().isoformat(timespec="seconds"),
+                content=content,
             )
 
         except Exception as e:
